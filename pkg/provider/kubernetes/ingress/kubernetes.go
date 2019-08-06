@@ -123,7 +123,7 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 				case <-stop:
 					return nil
 				case event := <-eventsChan:
-					conf := p.loadConfigurationFromIngresses(ctxLog, k8sClient)
+					conf := buildTrailingSlashRedirects(p.loadConfigurationFromIngresses(ctxLog, k8sClient))
 
 					if reflect.DeepEqual(p.lastConfiguration.Get(), conf) {
 						logger.Debugf("Skipping Kubernetes event kind %T", event)
@@ -468,4 +468,68 @@ func (p *Provider) updateIngressStatus(i *v1beta1.Ingress, k8sClient Client) err
 	}
 
 	return k8sClient.UpdateIngressStatus(i.Namespace, i.Name, service.Status.LoadBalancer.Ingress[0].IP, service.Status.LoadBalancer.Ingress[0].Hostname)
+}
+
+func buildTrailingSlashRedirects(conf *dynamic.Configuration) *dynamic.Configuration {
+	for key, router := range conf.HTTP.Routers {
+		if strings.Contains(router.Rule, "PathPrefix") {
+			// Rule contains PathPrefix, parse path from the rule
+			splitRule := strings.Split(router.Rule, "&&")
+			for _, rule := range splitRule {
+				if strings.Contains(rule, "PathPrefix") {
+					// Subrule contains PathPrefix. Pull out the path.
+					trimmedRule := strings.TrimPrefix(rule, "PathPrefix(`")
+					trimmedRule = strings.TrimSuffix(trimmedRule, "`)")
+					lastChar := trimmedRule[len(trimmedRule)-1:]
+					if lastChar == "/" {
+						// PathPrefix rule ends in a slash. Check for existing path rule without the trailing slash.
+						match := false
+						trimmedPath := trimmedRule[0 : len(trimmedRule)-1]
+						matchRule := "Path(`" + trimmedPath + "`)"
+						for _, subrouter := range conf.HTTP.Routers {
+							if strings.Contains(subrouter.Rule, "Path") {
+								splitSubRule := strings.Split(subrouter.Rule, "&&")
+								for _, subRule := range splitSubRule {
+									if subRule == matchRule {
+										// existing match found, nothing more needed.
+										match = true
+									}
+									if match {
+										break
+									}
+								}
+							}
+							if match {
+								break
+							}
+						}
+						if !match {
+							// No match found, create a duplicate router with a redirect to the path with the trailing slash
+							redirectKey := key + "-redirect"
+							redirectRouterSplitRule := []string{}
+							for _, r := range splitRule {
+								if !strings.Contains(r, "PathPrefix") {
+									redirectRouterSplitRule = append(redirectRouterSplitRule, r)
+								}
+							}
+							redirectRouterSplitRule = append(redirectRouterSplitRule, matchRule)
+							redirectRouter := router.DeepCopy()
+							redirectRouter.Rule = strings.Join(redirectRouterSplitRule, "&&")
+							redirectRouter.Middlewares = []string{redirectKey}
+
+							redirectMiddleware := &dynamic.Middleware{
+								RedirectRegex: &dynamic.RedirectRegex{
+									Regex:       trimmedPath,
+									Replacement: trimmedRule,
+								},
+							}
+							conf.HTTP.Routers[redirectKey] = redirectRouter
+							conf.HTTP.Middlewares[redirectKey] = redirectMiddleware
+						}
+					}
+				}
+			}
+		}
+	}
+	return conf
 }
