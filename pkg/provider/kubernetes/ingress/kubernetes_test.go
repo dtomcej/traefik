@@ -1122,3 +1122,158 @@ func TestGetTLS(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildTrailingSlashRedirects(t *testing.T) {
+	testCases := []struct {
+		desc     string
+		provided *dynamic.Configuration
+		expected *dynamic.Configuration
+	}{
+		{
+			desc: "empty configuration",
+			provided: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers:     map[string]*dynamic.Router{},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+			expected: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers:     map[string]*dynamic.Router{},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+		},
+		{
+			desc: "configuration with no path matcher in rule",
+			provided: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers: map[string]*dynamic.Router{
+						"test": {
+							Rule: "Host(`foo.com`)",
+						},
+					},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+			expected: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers: map[string]*dynamic.Router{
+						"test": {
+							Rule: "Host(`foo.com`)",
+						},
+					},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+		},
+		{
+			desc: "configuration with pathprefix rule with no trailing slash",
+			provided: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers: map[string]*dynamic.Router{
+						"test": {
+							Rule: "Host(`foo.com`) && PathPrefix(`/bacon`)",
+						},
+					},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+			expected: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers: map[string]*dynamic.Router{
+						"test": {
+							Rule: "Host(`foo.com`) && PathPrefix(`/bacon`)",
+						},
+					},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+		},
+		{
+			desc: "configuration with pathprefix rule with trailing slash",
+			provided: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers: map[string]*dynamic.Router{
+						"test": {
+							Rule: "Host(`foo.com`) && PathPrefix(`/bacon/`)",
+						},
+					},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+			expected: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers: map[string]*dynamic.Router{
+						"test": {
+							Rule: "Host(`foo.com`) && PathPrefix(`/bacon/`)",
+						},
+						"test-redirect": {
+							Rule:        "Host(`foo.com`) && Path(`/bacon`)",
+							Middlewares: []string{"test-redirect"},
+						},
+					},
+					Services: map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{
+						"test-redirect": {
+							RedirectRegex: &dynamic.RedirectRegex{
+								Regex:       "/bacon",
+								Replacement: "/bacon/",
+								Permanent:   true,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "configuration with pathprefix rule with trailing slash, and a manual match rule",
+			provided: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers: map[string]*dynamic.Router{
+						"test": {
+							Rule: "Host(`foo.com`) && PathPrefix(`/bacon/`)",
+						},
+						"test-2": {
+							Rule: "Host(`foo.com`) && Path(`/bacon`)",
+						},
+					},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+			expected: &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers: map[string]*dynamic.Router{
+						"test": {
+							Rule: "Host(`foo.com`) && PathPrefix(`/bacon/`)",
+						},
+						"test-2": {
+							Rule: "Host(`foo.com`) && Path(`/bacon`)",
+						},
+					},
+					Services:    map[string]*dynamic.Service{},
+					Middlewares: map[string]*dynamic.Middleware{},
+				},
+			},
+		},
+	}
+
+	for _, test := range testCases {
+		test := test
+		t.Run(test.desc, func(t *testing.T) {
+			t.Parallel()
+
+			actual := buildTrailingSlashRedirects(test.provided)
+
+			assert.Equal(t, test.expected, actual)
+		})
+	}
+}

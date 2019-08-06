@@ -474,7 +474,7 @@ func buildTrailingSlashRedirects(conf *dynamic.Configuration) *dynamic.Configura
 	for key, router := range conf.HTTP.Routers {
 		if strings.Contains(router.Rule, "PathPrefix") {
 			// Rule contains PathPrefix, parse path from the rule
-			splitRule := strings.Split(router.Rule, "&&")
+			splitRule := strings.Split(router.Rule, " && ")
 			for _, rule := range splitRule {
 				if strings.Contains(rule, "PathPrefix") {
 					// Subrule contains PathPrefix. Pull out the path.
@@ -488,7 +488,7 @@ func buildTrailingSlashRedirects(conf *dynamic.Configuration) *dynamic.Configura
 						matchRule := "Path(`" + trimmedPath + "`)"
 						for _, subrouter := range conf.HTTP.Routers {
 							if strings.Contains(subrouter.Rule, "Path") {
-								splitSubRule := strings.Split(subrouter.Rule, "&&")
+								splitSubRule := strings.Split(subrouter.Rule, " && ")
 								for _, subRule := range splitSubRule {
 									if subRule == matchRule {
 										// existing match found, nothing more needed.
@@ -514,13 +514,14 @@ func buildTrailingSlashRedirects(conf *dynamic.Configuration) *dynamic.Configura
 							}
 							redirectRouterSplitRule = append(redirectRouterSplitRule, matchRule)
 							redirectRouter := router.DeepCopy()
-							redirectRouter.Rule = strings.Join(redirectRouterSplitRule, "&&")
+							redirectRouter.Rule = strings.Join(redirectRouterSplitRule, " && ")
 							redirectRouter.Middlewares = []string{redirectKey}
 
 							redirectMiddleware := &dynamic.Middleware{
 								RedirectRegex: &dynamic.RedirectRegex{
 									Regex:       trimmedPath,
 									Replacement: trimmedRule,
+									Permanent:   true,
 								},
 							}
 							conf.HTTP.Routers[redirectKey] = redirectRouter
