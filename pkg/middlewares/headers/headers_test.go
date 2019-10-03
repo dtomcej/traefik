@@ -333,6 +333,12 @@ func TestCORSResponses(t *testing.T) {
 	emptyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 	nonEmptyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Header().Set("Vary", "Testing") })
 	existingOriginHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Header().Set("Vary", "Origin") })
+	existingAccessControlAllowOriginHandlerSet := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://foo.bar.org")
+	})
+	existingAccessControlAllowOriginHandlerAdd := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Access-Control-Allow-Origin", "http://foo.bar.org")
+	})
 
 	testCases := []struct {
 		desc           string
@@ -448,6 +454,30 @@ func TestCORSResponses(t *testing.T) {
 			expected: map[string][]string{
 				"Access-Control-Allow-Origin": {"https://foo.bar.org"},
 				"Vary":                        {"Origin"},
+			},
+		},
+		{
+			desc: "Test Simple Request with non-empty response: set ACAO",
+			header: NewHeader(existingAccessControlAllowOriginHandlerSet, dynamic.Headers{
+				AccessControlAllowOrigin: "*",
+			}),
+			requestHeaders: map[string][]string{
+				"Origin": {"https://foo.bar.org"},
+			},
+			expected: map[string][]string{
+				"Access-Control-Allow-Origin": {"*"},
+			},
+		},
+		{
+			desc: "Test Simple Request with non-empty response: add ACAO",
+			header: NewHeader(existingAccessControlAllowOriginHandlerAdd, dynamic.Headers{
+				AccessControlAllowOrigin: "*",
+			}),
+			requestHeaders: map[string][]string{
+				"Origin": {"https://foo.bar.org"},
+			},
+			expected: map[string][]string{
+				"Access-Control-Allow-Origin": {"*"},
 			},
 		},
 		{
