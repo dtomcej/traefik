@@ -1448,7 +1448,7 @@ func TestLoadConfigurationFromIngressesWithExternalNameServices(t *testing.T) {
 
 			p := Provider{IngressClass: test.ingressClass}
 			p.AllowExternalNameServices = test.allowExternalNameServices
-			conf, _ := p.loadConfigurationFromIngresses(context.Background(), clientMock)
+			conf := p.loadConfigurationFromIngresses(context.Background(), clientMock)
 
 			assert.Equal(t, test.expected, conf)
 		})
