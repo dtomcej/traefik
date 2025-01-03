@@ -1,5 +1,5 @@
 [build]
-# Path relative to the root of the repository.
+# Path relative to the root of the repository...
 publish = "site"
 base = "docs"
 
